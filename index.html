@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video → WebP</title>
+<!-- title updated dynamically by JS -->
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d0d0d;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --border: #3a3a3c;
+  --accent: #6c6fff;
+  --accent-dim: rgba(108, 111, 255, 0.12);
+  --text: #f2f2f7;
+  --text-2: #8e8e93;
+  --success: #30d158;
+  --error: #ff453a;
+  --r: 12px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: rgba(13,13,13,0.92);
+  backdrop-filter: blur(12px);
+  z-index: 20;
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-2);
+  transition: background 0.3s;
+}
+.status-dot.loading { background: #ffa500; animation: pulse 1s infinite; }
+.status-dot.ready   { background: var(--success); }
+.status-dot.error   { background: var(--error); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.status-label {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* ── Toggles row ── */
+.toggles-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Auto-convert toggle ── */
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* ── Format segmented control ── */
+.format-seg-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.format-seg-label {
+  font-size: 13px;
+  color: var(--text-2);
+  user-select: none;
+}
+
+.format-seg {
+  display: flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.seg-btn {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Hide quality field when GIF is active */
+.format-gif .sel-quality-field { display: none; }
+
+/* Hide fps + quality when Video is active */
+.format-video .sel-fps-field, .format-video .sel-quality-field { display: none; }
+
+.toggle-label {
+  font-size: 13px;
+  color: var(--text-2);
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.toggle-wrap:has(input:checked) .toggle-label { color: var(--text); }
+
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.toggle input:checked + .toggle-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+
+.toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+/* ── Main ── */
+.main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 20px 120px;
+}
+
+/* ── Drop Zone (full) ── */
+#drop-full {
+  border: 2px dashed var(--border);
+  border-radius: var(--r);
+  padding: 56px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  background: var(--surface);
+  margin-bottom: 24px;
+}
+
+#drop-full:hover,
+#drop-full.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+#drop-full.drag-over { transform: scale(1.005); }
+
+.drop-icon { font-size: 44px; margin-bottom: 14px; opacity: 0.5; }
+.drop-title { font-size: 17px; font-weight: 500; margin-bottom: 6px; }
+.drop-sub { color: var(--text-2); font-size: 13px; }
+.file-label { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── Drop Zone (compact) ── */
+#drop-compact {
+  display: none;
+  border: 2px dashed var(--border);
+  border-radius: var(--r);
+  padding: 36px 20px;
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 15px;
+  margin-bottom: 20px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+#drop-compact:hover,
+#drop-compact.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+/* ── Cards Grid ── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+/* ── Card ── */
+.card {
+  background: var(--surface);
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.25s;
+}
+
+.card.is-converting { border-color: var(--accent); }
+.card.is-done       { border-color: var(--success); }
+.card.is-error      { border-color: var(--error); }
+
+/* Card header */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-filename {
+  flex: 1;
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-size {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.card-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 3px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+.card-remove:hover { color: var(--error); }
+
+/* Video preview */
+.card-preview {
+  position: relative;
+  background: #000;
+}
+
+.card-preview video {
+  width: 100%;
+  height: 175px;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+.duration-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  backdrop-filter: blur(4px);
+}
+
+/* Timeline */
+.card-timeline {
+  padding: 14px 16px 10px;
+}
+
+.timeline-track {
+  position: relative;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  margin: 8px 10px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.timeline-fill {
+  position: absolute;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.timeline-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.5);
+  z-index: 2;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.timeline-handle:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.timeline-handle.dragging {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.time-inputs {
+  display: flex;
+  gap: 8px;
+}
+
+.time-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+
+.time-field:focus-within { border-color: var(--accent); }
+
+.time-field label {
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.time-field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.time-field input::-webkit-inner-spin-button { opacity: 0.4; }
+
+.time-field span {
+  color: var(--text-2);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Settings */
+.card-settings {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px 12px;
+}
+
+.setting-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-field label {
+  font-size: 11px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.setting-field select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.setting-field select:focus { border-color: var(--accent); }
+
+/* Estimate row */
+.card-estimate {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px;
+  padding: 0 16px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.est-size { color: var(--text); font-weight: 500; }
+
+/* Card footer */
+.card-footer {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-row {
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.2s;
+}
+
+.progress-pct {
+  font-size: 12px;
+  color: var(--text-2);
+  font-family: 'SF Mono', monospace;
+  min-width: 34px;
+  text-align: right;
+}
+
+.card-status {
+  font-size: 12px;
+  min-height: 15px;
+  color: var(--text-2);
+}
+.card-status.ok  { color: var(--success); }
+.card-status.err { color: var(--error); }
+
+.footer-actions { display: flex; justify-content: flex-end; }
+
+.btn-convert {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn-convert:hover:not(:disabled) { background: #7c7fff; transform: translateY(-1px); }
+.btn-convert:active:not(:disabled) { transform: translateY(0); }
+.btn-convert:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Convert All Bar ── */
+#convert-all-bar {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding: 14px 24px;
+  background: rgba(13,13,13,0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 20;
+}
+
+#convert-all-info {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+#btn-convert-all {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.1s;
+}
+
+#btn-convert-all:hover:not(:disabled) { background: #7c7fff; transform: translateY(-1px); }
+#btn-convert-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Play button overlay ── */
+.play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  border: 2px solid rgba(255,255,255,0.25);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+  backdrop-filter: blur(4px);
+}
+.card-preview:hover .play-btn { opacity: 1; }
+.play-btn.is-playing { opacity: 0; }
+.card-preview:hover .play-btn.is-playing { opacity: 1; }
+
+/* ── Timeline playhead ── */
+.timeline-playhead {
+  position: absolute;
+  width: 2px;
+  top: -5px;
+  bottom: -5px;
+  background: rgba(255,255,255,0.8);
+  transform: translateX(-50%);
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+/* ── Set-time capture buttons ── */
+.btn-set-time {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s;
+  user-select: none;
+}
+.btn-set-time:hover { color: var(--accent); }
+
+/* ── Loading overlay ── */
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+}
+
+#loading-overlay.hidden { display: none; }
+
+.spinner {
+  width: 42px; height: 42px;
+  border: 3px solid var(--surface-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.overlay-title { font-size: 16px; font-weight: 500; }
+.overlay-sub   { font-size: 13px; color: var(--text-2); }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="overlay-title">Loading ffmpeg…</div>
+  <div class="overlay-sub">Downloading ~30MB on first load, cached after that</div>
+</div>
+
+<header class="header">
+  <h1 id="page-title">Video → WebP</h1>
+  <div class="header-right">
+    <div id="status-dot" class="status-dot loading"></div>
+    <span id="status-label" class="status-label">Loading…</span>
+  </div>
+</header>
+
+<main class="main">
+  <!-- Toggles row -->
+  <div class="toggles-row">
+    <label class="toggle-wrap" title="Instantly convert &amp; download any dropped video">
+      <div class="toggle">
+        <input type="checkbox" id="auto-convert-toggle">
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </div>
+      <span class="toggle-label">Auto-convert on drop</span>
+    </label>
+    <div class="format-seg-wrap">
+      <span class="format-seg-label">Format</span>
+      <div class="format-seg">
+        <button class="seg-btn" id="fmt-webp"  data-fmt="webp">WebP</button>
+        <button class="seg-btn" id="fmt-gif"   data-fmt="gif">GIF</button>
+        <button class="seg-btn" id="fmt-video" data-fmt="video">Video</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full drop zone (shown when no cards) -->
+  <div id="drop-full">
+    <div class="drop-icon">🎬</div>
+    <div class="drop-title">Drop videos here</div>
+    <div class="drop-sub">or <label for="file-input" class="file-label">browse files</label></div>
+  </div>
+
+  <!-- Compact drop zone (shown when cards exist) -->
+  <div id="drop-compact">+ Add more videos</div>
+
+  <!-- Hidden file input (always present) -->
+  <input type="file" id="file-input" accept="video/*" multiple hidden>
+
+  <div id="cards-grid" class="cards-grid"></div>
+</main>
+
+<div id="convert-all-bar">
+  <span id="convert-all-info"></span>
+  <button id="btn-convert-all">Convert All</button>
+</div>
+
+<script type="module">
+import { FFmpeg } from '/node_modules/@ffmpeg/ffmpeg/dist/esm/index.js';
+import { fetchFile } from '/node_modules/@ffmpeg/util/dist/esm/index.js';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const cards = [];
+const ffmpeg = new FFmpeg();
+let ffmpegReady = false;
+let activeCardEl = null;
+let autoConvert = localStorage.getItem('autoConvert') === 'true';
+let outputFormat = localStorage.getItem('outputFormat') || 'webp';
+const AUTO_CONVERT_LIMIT = 60; // seconds — videos longer than this skip auto-convert
+
+// ── Conversion queue (used by auto-convert so simultaneous drops serialize) ──
+const queue = [];
+let queueRunning = false;
+
+function enqueue(card, el) {
+  queue.push({ card, el });
+  if (!queueRunning) drainQueue();
+}
+
+async function drainQueue() {
+  queueRunning = true;
+  while (queue.length > 0) {
+    const { card, el } = queue.shift();
+    if (card.status !== 'converting') await convertCard(card, el);
+  }
+  queueRunning = false;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function init() {
+  setStatus('loading', 'Loading…');
+
+  ffmpeg.on('progress', ({ progress }) => {
+    if (!activeCardEl) return;
+    const pct = Math.min(100, Math.round(progress * 100));
+    const fill = activeCardEl.querySelector('.progress-fill');
+    const label = activeCardEl.querySelector('.progress-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = pct + '%';
+  });
+
+  try {
+    await ffmpeg.load({
+      coreURL: '/node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js',
+      wasmURL: '/node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm',
+    });
+    ffmpegReady = true;
+    document.getElementById('loading-overlay').classList.add('hidden');
+    setStatus('ready', 'Ready');
+  } catch (err) {
+    document.querySelector('.overlay-title').textContent = 'Failed to load ffmpeg';
+    document.querySelector('.overlay-sub').textContent = err.message;
+    setStatus('error', 'Error');
+    console.error(err);
+  }
+}
+
+function setStatus(type, label) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + type;
+  document.getElementById('status-label').textContent = label;
+}
+
+// ── Drop / File input ─────────────────────────────────────────────────────────
+function bindDropZone(el) {
+  el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over'); });
+  el.addEventListener('drop', (e) => {
+    e.preventDefault();
+    el.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+    if (files.length) addFiles(files);
+  });
+}
+
+const dropFull    = document.getElementById('drop-full');
+const dropCompact = document.getElementById('drop-compact');
+const fileInput   = document.getElementById('file-input');
+
+bindDropZone(dropFull);
+bindDropZone(dropCompact);
+
+dropFull.addEventListener('click', (e) => {
+  if (e.target.tagName !== 'LABEL') fileInput.click();
+});
+dropCompact.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+  const files = Array.from(fileInput.files);
+  if (files.length) addFiles(files);
+  fileInput.value = '';
+});
+
+document.getElementById('btn-convert-all').addEventListener('click', convertAll);
+const autoToggle = document.getElementById('auto-convert-toggle');
+autoToggle.checked = autoConvert;
+autoToggle.addEventListener('change', (e) => {
+  autoConvert = e.target.checked;
+  localStorage.setItem('autoConvert', autoConvert);
+});
+
+// ── Format toggle ─────────────────────────────────────────────────────────────
+const fmtWebpBtn  = document.getElementById('fmt-webp');
+const fmtGifBtn   = document.getElementById('fmt-gif');
+const fmtVideoBtn = document.getElementById('fmt-video');
+const mainEl      = document.querySelector('.main');
+
+function setFormat(fmt) {
+  outputFormat = fmt;
+  localStorage.setItem('outputFormat', fmt);
+  fmtWebpBtn.classList.toggle('active',  fmt === 'webp');
+  fmtGifBtn.classList.toggle('active',   fmt === 'gif');
+  fmtVideoBtn.classList.toggle('active', fmt === 'video');
+  mainEl.classList.toggle('format-gif',   fmt === 'gif');
+  mainEl.classList.toggle('format-video', fmt === 'video');
+  const label = fmt === 'gif' ? 'Video → GIF' : fmt === 'video' ? 'Trim Video' : 'Video → WebP';
+  document.getElementById('page-title').textContent = label;
+  document.title = label;
+}
+
+fmtWebpBtn.addEventListener('click',  () => setFormat('webp'));
+fmtGifBtn.addEventListener('click',   () => setFormat('gif'));
+fmtVideoBtn.addEventListener('click', () => setFormat('video'));
+setFormat(outputFormat);
+
+// ── Add files ─────────────────────────────────────────────────────────────────
+function addFiles(files) {
+  files.forEach(file => {
+    const card = {
+      id: Math.random().toString(36).slice(2, 10),
+      file,
+      duration: 0,
+      startTime: 0,
+      endTime: 0,
+      fps: 15,
+      width: 480,
+      quality: 75,
+      status: 'idle',
+    };
+    cards.push(card);
+    renderCard(card);
+  });
+  syncDropzoneMode();
+  syncConvertAllBar();
+}
+
+function syncDropzoneMode() {
+  const hasCards = cards.length > 0;
+  dropFull.style.display    = hasCards ? 'none' : 'block';
+  dropCompact.style.display = hasCards ? 'block' : 'none';
+}
+
+function syncConvertAllBar() {
+  const bar = document.getElementById('convert-all-bar');
+  if (cards.length > 1) {
+    bar.style.display = 'flex';
+    document.getElementById('convert-all-info').textContent = `${cards.length} videos queued`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtBytes(b) {
+  return b >= 1024*1024 ? (b/(1024*1024)).toFixed(1)+' MB' : (b/1024).toFixed(0)+' KB';
+}
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1);
+  return `${m}:${sec.padStart(4,'0')}`;
+}
+
+// ── Render card ───────────────────────────────────────────────────────────────
+function renderCard(card) {
+  const grid = document.getElementById('cards-grid');
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.dataset.cardId = card.id;
+
+  el.innerHTML = `
+    <div class="card-header">
+      <span class="card-filename" title="${escHtml(card.file.name)}">${escHtml(card.file.name)}</span>
+      <span class="card-size">${fmtBytes(card.file.size)}</span>
+      <button class="card-remove" title="Remove">×</button>
+    </div>
+    <div class="card-preview">
+      <video muted preload="metadata" playsinline></video>
+      <div class="duration-badge">--:--</div>
+      <button class="play-btn" title="Play / Pause">▶</button>
+    </div>
+    <div class="card-timeline">
+      <div class="timeline-track">
+        <div class="timeline-fill"></div>
+        <div class="timeline-playhead" style="left:0%"></div>
+        <div class="timeline-handle" data-handle="start"></div>
+        <div class="timeline-handle" data-handle="end" style="left:100%"></div>
+      </div>
+      <div class="time-inputs">
+        <div class="time-field">
+          <label>Start</label>
+          <input class="input-start" type="number" min="0" step="0.1" value="0">
+          <span>s</span>
+          <button class="btn-set-time" data-target="start" title="Set start to current playback time">◎</button>
+        </div>
+        <div class="time-field">
+          <label>End</label>
+          <input class="input-end" type="number" min="0" step="0.1" value="0">
+          <span>s</span>
+          <button class="btn-set-time" data-target="end" title="Set end to current playback time">◎</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-settings">
+      <div class="setting-field sel-fps-field">
+        <label>FPS</label>
+        <select class="sel-fps">
+          <option value="5">5</option><option value="10">10</option>
+          <option value="15" selected>15</option><option value="20">20</option>
+          <option value="24">24</option><option value="30">30</option>
+        </select>
+      </div>
+      <div class="setting-field">
+        <label>Width</label>
+        <select class="sel-width">
+          <option value="240">240px</option><option value="320">320px</option>
+          <option value="480" selected>480px</option><option value="640">640px</option>
+          <option value="800">800px</option><option value="0">Original</option>
+        </select>
+      </div>
+      <div class="setting-field sel-quality-field">
+        <label>Quality</label>
+        <select class="sel-quality">
+          <option value="50">50</option><option value="60">60</option>
+          <option value="70">70</option><option value="75" selected>75</option>
+          <option value="80">80</option><option value="85">85</option>
+          <option value="90">90</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-estimate">Est. output: <span class="est-size">—</span></div>
+    <div class="card-footer">
+      <div class="progress-row">
+        <div class="progress-track"><div class="progress-fill"></div></div>
+        <span class="progress-pct">0%</span>
+      </div>
+      <div class="card-status"></div>
+      <div class="footer-actions">
+        <button class="btn-convert">Convert →</button>
+      </div>
+    </div>
+  `;
+
+  // Video
+  const video = el.querySelector('video');
+  const objectUrl = URL.createObjectURL(card.file);
+  video.src = objectUrl;
+  video.addEventListener('loadedmetadata', () => {
+    card.duration   = video.duration;
+    card.endTime    = video.duration;
+    card.videoWidth  = video.videoWidth;
+    card.videoHeight = video.videoHeight;
+    el.querySelector('.duration-badge').textContent = fmtTime(video.duration);
+    el.querySelector('.input-end').value = video.duration.toFixed(1);
+    el.querySelector('.input-end').max   = video.duration.toFixed(1);
+    el.querySelector('.input-start').max = video.duration.toFixed(1);
+    syncSlider(card, el);
+    updateEstimate(card, el);
+    video.currentTime = 0;
+
+    if (autoConvert) {
+      if (card.duration <= AUTO_CONVERT_LIMIT) {
+        enqueue(card, el);
+      } else {
+        const s = el.querySelector('.card-status');
+        s.textContent = `Auto-convert skipped — clip is over ${AUTO_CONVERT_LIMIT}s`;
+        s.className = 'card-status';
+      }
+    }
+  });
+
+  // Remove button
+  el.querySelector('.card-remove').addEventListener('click', () => {
+    URL.revokeObjectURL(objectUrl);
+    el.remove();
+    const idx = cards.findIndex(c => c.id === card.id);
+    if (idx !== -1) cards.splice(idx, 1);
+    syncDropzoneMode();
+    syncConvertAllBar();
+  });
+
+  // Convert button
+  el.querySelector('.btn-convert').addEventListener('click', () => convertCard(card, el));
+
+  // Time inputs
+  el.querySelector('.input-start').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    if (isNaN(v)) return;
+    card.startTime = Math.max(0, Math.min(v, card.endTime - 0.1));
+    e.target.value = card.startTime.toFixed(1);
+    syncSlider(card, el);
+    video.currentTime = card.startTime;
+    updateEstimate(card, el);
+  });
+
+  el.querySelector('.input-end').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    if (isNaN(v)) return;
+    card.endTime = Math.min(card.duration || 99999, Math.max(v, card.startTime + 0.1));
+    e.target.value = card.endTime.toFixed(1);
+    syncSlider(card, el);
+    video.currentTime = card.endTime;
+    updateEstimate(card, el);
+  });
+
+  // Settings
+  el.querySelector('.sel-fps').addEventListener('change', (e) => {
+    card.fps = parseInt(e.target.value);
+    updateEstimate(card, el);
+  });
+  el.querySelector('.sel-width').addEventListener('change', (e) => {
+    card.width = parseInt(e.target.value);
+    updateEstimate(card, el);
+  });
+  el.querySelector('.sel-quality').addEventListener('change', (e) => {
+    card.quality = parseInt(e.target.value);
+    updateEstimate(card, el);
+  });
+
+  // Slider drag
+  setupSlider(card, el, video);
+
+  // Playback
+  const playBtn  = el.querySelector('.play-btn');
+  const playhead = el.querySelector('.timeline-playhead');
+  const trackEl  = el.querySelector('.timeline-track');
+
+  playBtn.addEventListener('click', () => {
+    if (video.paused) {
+      if (video.currentTime < card.startTime || video.currentTime >= card.endTime)
+        video.currentTime = card.startTime;
+      video.play();
+    } else {
+      video.pause();
+    }
+  });
+
+  video.addEventListener('play',  () => { playBtn.textContent = '⏸'; playBtn.classList.add('is-playing'); });
+  video.addEventListener('pause', () => { playBtn.textContent = '▶'; playBtn.classList.remove('is-playing'); });
+  video.addEventListener('ended', () => { playBtn.textContent = '▶'; playBtn.classList.remove('is-playing'); });
+
+  video.addEventListener('timeupdate', () => {
+    if (!card.duration) return;
+    if (!video.paused && video.currentTime >= card.endTime) {
+      video.pause();
+      video.currentTime = card.endTime;
+    }
+    playhead.style.left = (video.currentTime / card.duration * 100) + '%';
+  });
+
+  trackEl.addEventListener('click', (e) => {
+    if (!card.duration || e.target.classList.contains('timeline-handle')) return;
+    const rect = trackEl.getBoundingClientRect();
+    video.currentTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * card.duration;
+  });
+
+  el.querySelector('.btn-set-time[data-target="start"]').addEventListener('click', () => {
+    card.startTime = Math.min(video.currentTime, card.endTime - 0.1);
+    el.querySelector('.input-start').value = card.startTime.toFixed(1);
+    syncSlider(card, el);
+    updateEstimate(card, el);
+  });
+
+  el.querySelector('.btn-set-time[data-target="end"]').addEventListener('click', () => {
+    card.endTime = Math.max(video.currentTime, card.startTime + 0.1);
+    el.querySelector('.input-end').value = card.endTime.toFixed(1);
+    syncSlider(card, el);
+    updateEstimate(card, el);
+  });
+
+  grid.appendChild(el);
+}
+
+// ── Timeline slider ───────────────────────────────────────────────────────────
+function syncSlider(card, el) {
+  if (!card.duration) return;
+  const sp = (card.startTime / card.duration) * 100;
+  const ep = (card.endTime   / card.duration) * 100;
+  el.querySelector('[data-handle="start"]').style.left = sp + '%';
+  el.querySelector('[data-handle="end"]').style.left   = ep + '%';
+  el.querySelector('.timeline-fill').style.left  = sp + '%';
+  el.querySelector('.timeline-fill').style.width = (ep - sp) + '%';
+  el.querySelector('.input-start').value = card.startTime.toFixed(1);
+  el.querySelector('.input-end').value   = card.endTime.toFixed(1);
+}
+
+// Single global drag state — avoids stacking N mousemove listeners
+let drag = null; // { card, el, handle, video, track }
+
+document.addEventListener('mousemove', (e) => {
+  if (!drag) return;
+  applyDrag(e.clientX);
+});
+
+document.addEventListener('touchmove', (e) => {
+  if (!drag) return;
+  e.preventDefault();
+  applyDrag(e.touches[0].clientX);
+}, { passive: false });
+
+function applyDrag(clientX) {
+  const { card, el, handle, video, track } = drag;
+  const rect = track.getBoundingClientRect();
+  const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const t    = pct * card.duration;
+  if (handle === 'start') {
+    card.startTime = Math.max(0, Math.min(t, card.endTime - 0.1));
+    video.currentTime = card.startTime;
+  } else {
+    card.endTime = Math.min(card.duration, Math.max(t, card.startTime + 0.1));
+    video.currentTime = card.endTime;
+  }
+  syncSlider(card, el);
+  updateEstimate(card, el);
+}
+
+function endDrag() {
+  if (!drag) return;
+  drag.el.querySelector(`[data-handle="${drag.handle}"]`).classList.remove('dragging');
+  drag = null;
+}
+
+document.addEventListener('mouseup', endDrag);
+document.addEventListener('touchend', endDrag);
+
+function setupSlider(card, el, video) {
+  const track = el.querySelector('.timeline-track');
+  ['start', 'end'].forEach(handle => {
+    const h = el.querySelector(`[data-handle="${handle}"]`);
+    const startDrag = (e) => {
+      if (!card.duration) return;
+      e.preventDefault();
+      drag = { card, el, handle, video, track };
+      h.classList.add('dragging');
+    };
+    h.addEventListener('mousedown', startDrag);
+    h.addEventListener('touchstart', startDrag, { passive: false });
+  });
+}
+
+// ── Size estimate ─────────────────────────────────────────────────────────────
+function estimateOutputSize(card) {
+  const duration = card.endTime - card.startTime;
+  if (duration <= 0) return null;
+
+  if (outputFormat === 'video') {
+    if (!card.duration) return null;
+    return card.file.size * (duration / card.duration);
+  }
+
+  if (!card.videoWidth || !card.videoHeight) return null;
+  const outWidth  = card.width > 0 ? card.width : card.videoWidth;
+  const outHeight = Math.round((card.videoHeight / card.videoWidth) * outWidth);
+  const totalFrames = Math.ceil(duration * card.fps);
+
+  // GIF uses LZW — much less efficient than WebP delta encoding.
+  // WebP: quality 50→~45x, quality 75→~30x, quality 90→~20x
+  const compressionRatio = outputFormat === 'gif'
+    ? 8
+    : 55 - (card.quality / 100) * 35;
+  return (outWidth * outHeight * 3 / compressionRatio) * totalFrames;
+}
+
+function updateEstimate(card, el) {
+  const span = el.querySelector('.est-size');
+  if (!span) return;
+  const bytes = estimateOutputSize(card);
+  span.textContent = bytes !== null ? '~' + fmtBytes(bytes) : '—';
+}
+
+// ── Convert single card ───────────────────────────────────────────────────────
+async function convertCard(card, el) {
+  if (!ffmpegReady) { alert('ffmpeg is still loading — please wait a moment.'); return; }
+  if (card.status === 'converting') return;
+
+  card.status = 'converting';
+  el.className = 'card is-converting';
+
+  const progressRow = el.querySelector('.progress-row');
+  const progressFill = el.querySelector('.progress-fill');
+  const progressPct  = el.querySelector('.progress-pct');
+  const statusEl     = el.querySelector('.card-status');
+  const btn          = el.querySelector('.btn-convert');
+
+  progressRow.style.display = 'flex';
+  progressFill.style.width = '0%';
+  progressPct.textContent = '0%';
+  statusEl.textContent = '';
+  statusEl.className = 'card-status';
+  btn.disabled = true;
+  btn.textContent = 'Converting…';
+
+  activeCardEl = el;
+
+  const origExt = card.file.name.replace(/^.*\./, '').toLowerCase() || 'mp4';
+  const ext     = outputFormat === 'gif' ? 'gif' : outputFormat === 'video' ? origExt : 'webp';
+  const inName  = `in_${card.id}`;
+  const outName = `out_${card.id}.${ext}`;
+  const palName = `pal_${card.id}.png`;
+  const dur     = card.endTime - card.startTime;
+
+  try {
+    await ffmpeg.writeFile(inName, await fetchFile(card.file));
+
+    const vf = card.width > 0
+      ? `fps=${card.fps},scale=${card.width}:-1:flags=lanczos`
+      : `fps=${card.fps}`;
+
+    if (outputFormat === 'gif') {
+      // Two-pass: build optimal palette then apply it
+      await ffmpeg.exec([
+        '-ss', card.startTime.toString(),
+        '-i', inName,
+        '-t', dur.toString(),
+        '-vf', `${vf},palettegen=stats_mode=diff`,
+        '-y', palName,
+      ]);
+      await ffmpeg.exec([
+        '-ss', card.startTime.toString(),
+        '-i', inName,
+        '-t', dur.toString(),
+        '-i', palName,
+        '-filter_complex', `[0:v]${vf}[x];[x][1:v]paletteuse=dither=floyd_steinberg`,
+        '-loop', '0',
+        outName,
+      ]);
+      await ffmpeg.deleteFile(palName).catch(() => {});
+    } else if (outputFormat === 'video') {
+      if (card.width > 0) {
+        // re-encode with resize; -2 keeps height divisible by 2 (H.264 requirement)
+        await ffmpeg.exec([
+          '-ss', card.startTime.toString(),
+          '-i', inName,
+          '-t', dur.toString(),
+          '-vf', `scale=${card.width}:-2`,
+          '-c:a', 'copy',
+          outName,
+        ]);
+      } else {
+        // stream copy — fast, no quality loss, cuts on nearest keyframe
+        await ffmpeg.exec([
+          '-ss', card.startTime.toString(),
+          '-i', inName,
+          '-t', dur.toString(),
+          '-c', 'copy',
+          outName,
+        ]);
+      }
+    } else {
+      await ffmpeg.exec([
+        '-ss', card.startTime.toString(),
+        '-i', inName,
+        '-t', dur.toString(),
+        '-vf', vf,
+        '-vcodec', 'libwebp',
+        '-lossless', '0',
+        '-q:v', card.quality.toString(),
+        '-loop', '0',
+        '-preset', 'default',
+        '-an',
+        outName,
+      ]);
+    }
+
+    const data = await ffmpeg.readFile(outName);
+    const mime = outputFormat === 'gif' ? 'image/gif' : outputFormat === 'video' ? `video/${ext}` : 'image/webp';
+    const blob = new Blob([data.buffer], { type: mime });
+
+    await ffmpeg.deleteFile(inName).catch(() => {});
+    await ffmpeg.deleteFile(outName).catch(() => {});
+
+    // Auto-download
+    const outFilename = card.file.name.replace(/\.[^.]+$/, `.${ext}`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = outFilename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    card.status = 'done';
+    el.className = 'card is-done';
+    progressFill.style.width = '100%';
+    progressPct.textContent = '100%';
+    statusEl.textContent = `↓ Saved as ${outFilename}`;
+    statusEl.className = 'card-status ok';
+    btn.textContent = 'Convert Again';
+    btn.disabled = false;
+
+  } catch (err) {
+    console.error(err);
+    await ffmpeg.deleteFile(inName).catch(() => {});
+    await ffmpeg.deleteFile(outName).catch(() => {});
+    await ffmpeg.deleteFile(palName).catch(() => {});
+    card.status = 'error';
+    el.className = 'card is-error';
+    statusEl.textContent = 'Error: ' + err.message;
+    statusEl.className = 'card-status err';
+    btn.textContent = 'Retry';
+    btn.disabled = false;
+  }
+
+  activeCardEl = null;
+}
+
+// ── Convert all (sequential) ──────────────────────────────────────────────────
+async function convertAll() {
+  const btn = document.getElementById('btn-convert-all');
+  btn.disabled = true;
+  btn.textContent = 'Converting…';
+
+  for (const card of [...cards]) {
+    if (card.status === 'converting') continue;
+    const el = document.querySelector(`[data-card-id="${card.id}"]`);
+    if (el) await convertCard(card, el);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Convert All';
+}
+
+// ── Warn on unload if converting ─────────────────────────────────────────────
+window.addEventListener('beforeunload', (e) => {
+  if (cards.some(c => c.status === 'converting')) {
+    e.preventDefault();
+  }
+});
+
+// ── Go ────────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
