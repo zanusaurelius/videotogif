@@ -546,9 +546,23 @@ body {
   border-top: 1px solid var(--border);
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
   z-index: 20;
 }
+
+#btn-clear-done {
+  background: none;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+#btn-clear-done:hover { color: var(--text); border-color: var(--text-2); }
 
 #convert-all-info {
   color: var(--text-2);
@@ -679,6 +693,14 @@ body {
       </div>
       <span class="toggle-label">Auto-convert on drop</span>
     </label>
+    <label class="toggle-wrap" title="Trim videos longer than 12s down to the first 12 seconds on drop">
+      <div class="toggle">
+        <input type="checkbox" id="auto-trim-toggle">
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </div>
+      <span class="toggle-label">Auto-trim to 12s</span>
+    </label>
     <div class="format-seg-wrap">
       <span class="format-seg-label">Format</span>
       <div class="format-seg">
@@ -707,6 +729,7 @@ body {
 
 <div id="convert-all-bar">
   <span id="convert-all-info"></span>
+  <button id="btn-clear-done" style="display:none">Clear successful</button>
   <button id="btn-convert-all">Convert All</button>
 </div>
 
@@ -720,8 +743,10 @@ const ffmpeg = new FFmpeg();
 let ffmpegReady = false;
 let activeCardEl = null;
 let autoConvert = localStorage.getItem('autoConvert') === 'true';
+let autoTrim = localStorage.getItem('autoTrim') === 'true';
 let outputFormat = localStorage.getItem('outputFormat') || 'webp';
 const AUTO_CONVERT_LIMIT = 60; // seconds — videos longer than this skip auto-convert
+const AUTO_TRIM_LIMIT = 12;    // seconds — auto-trim caps end time to this
 
 // ── Conversion queue (used by auto-convert so simultaneous drops serialize) ──
 const queue = [];
@@ -807,11 +832,30 @@ fileInput.addEventListener('change', () => {
 });
 
 document.getElementById('btn-convert-all').addEventListener('click', convertAll);
+
+document.getElementById('btn-clear-done').addEventListener('click', () => {
+  const doneIds = cards.filter(c => c.status === 'done').map(c => c.id);
+  doneIds.forEach(id => {
+    const el = document.querySelector(`[data-card-id="${id}"]`);
+    if (el) el.remove();
+    const idx = cards.findIndex(c => c.id === id);
+    if (idx !== -1) cards.splice(idx, 1);
+  });
+  syncDropzoneMode();
+  syncConvertAllBar();
+});
 const autoToggle = document.getElementById('auto-convert-toggle');
 autoToggle.checked = autoConvert;
 autoToggle.addEventListener('change', (e) => {
   autoConvert = e.target.checked;
   localStorage.setItem('autoConvert', autoConvert);
+});
+
+const autoTrimToggle = document.getElementById('auto-trim-toggle');
+autoTrimToggle.checked = autoTrim;
+autoTrimToggle.addEventListener('change', (e) => {
+  autoTrim = e.target.checked;
+  localStorage.setItem('autoTrim', autoTrim);
 });
 
 // ── Format toggle ─────────────────────────────────────────────────────────────
@@ -867,12 +911,25 @@ function syncDropzoneMode() {
 
 function syncConvertAllBar() {
   const bar = document.getElementById('convert-all-bar');
-  if (cards.length > 1) {
-    bar.style.display = 'flex';
-    document.getElementById('convert-all-info').textContent = `${cards.length} videos queued`;
-  } else {
-    bar.style.display = 'none';
-  }
+  if (cards.length === 0) { bar.style.display = 'none'; return; }
+
+  const done    = cards.filter(c => c.status === 'done').length;
+  const errored = cards.filter(c => c.status === 'error').length;
+  const pending = cards.filter(c => c.status === 'idle').length;
+
+  const parts = [];
+  if (done)    parts.push(`${done} done`);
+  if (errored) parts.push(`${errored} failed`);
+  if (pending) parts.push(`${pending} pending`);
+  document.getElementById('convert-all-info').textContent = parts.join(' · ');
+
+  const clearBtn = document.getElementById('btn-clear-done');
+  clearBtn.style.display = done > 0 ? 'block' : 'none';
+
+  const convertAllBtn = document.getElementById('btn-convert-all');
+  convertAllBtn.style.display = (cards.length > 1 && pending > 0) ? 'block' : 'none';
+
+  bar.style.display = 'flex';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -975,12 +1032,12 @@ function renderCard(card) {
   const objectUrl = URL.createObjectURL(card.file);
   video.src = objectUrl;
   video.addEventListener('loadedmetadata', () => {
-    card.duration   = video.duration;
-    card.endTime    = video.duration;
+    card.duration    = video.duration;
+    card.endTime     = (autoTrim && video.duration > AUTO_TRIM_LIMIT) ? AUTO_TRIM_LIMIT : video.duration;
     card.videoWidth  = video.videoWidth;
     card.videoHeight = video.videoHeight;
     el.querySelector('.duration-badge').textContent = fmtTime(video.duration);
-    el.querySelector('.input-end').value = video.duration.toFixed(1);
+    el.querySelector('.input-end').value = card.endTime.toFixed(1);
     el.querySelector('.input-end').max   = video.duration.toFixed(1);
     el.querySelector('.input-start').max = video.duration.toFixed(1);
     syncSlider(card, el);
@@ -1329,6 +1386,7 @@ async function convertCard(card, el) {
   }
 
   activeCardEl = null;
+  syncConvertAllBar();
 }
 
 // ── Convert all (sequential) ──────────────────────────────────────────────────
