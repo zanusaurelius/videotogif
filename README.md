@@ -15,6 +15,8 @@ A browser-based video converter that runs entirely client-side using ffmpeg.wasm
 
 All conversion runs in-browser via ffmpeg.wasm. Nothing leaves your machine.
 
+<img width="1494" height="830" alt="Screenshot 2026-06-07 at 3 17 00 PM" src="https://github.com/user-attachments/assets/64db8158-944d-428e-9cbe-f2aa28cc4761" />
+
 ## Tech
 
 - **ffmpeg.wasm** (`@ffmpeg/ffmpeg`, `@ffmpeg/core`) — in-browser video processing
