@@ -734,8 +734,8 @@ body {
 </div>
 
 <script type="module">
-import { FFmpeg } from '/node_modules/@ffmpeg/ffmpeg/dist/esm/index.js';
-import { fetchFile } from '/node_modules/@ffmpeg/util/dist/esm/index.js';
+import { FFmpeg } from '/vendor/ffmpeg/index.js';
+import { fetchFile } from '/vendor/ffmpeg-util/index.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const cards = [];
@@ -781,8 +781,8 @@ async function init() {
 
   try {
     await ffmpeg.load({
-      coreURL: '/node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js',
-      wasmURL: '/node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm',
+      coreURL: '/vendor/ffmpeg-core/ffmpeg-core.js',
+      wasmURL: '/vendor/ffmpeg-core/ffmpeg-core.wasm',
     });
     ffmpegReady = true;
     document.getElementById('loading-overlay').classList.add('hidden');
